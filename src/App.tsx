@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import './preamble';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   onAuthStateChanged,
@@ -43,6 +44,7 @@ import {
   ShoppingBag,
   ShoppingCart,
   Sparkles,
+  Store,
   Trash2,
   TrendingDown,
 } from 'lucide-react';
@@ -68,6 +70,7 @@ import {
   OfflineIndicator,
   PWAInstallButton,
 } from './components/PWAInstallButton';
+import { SupermarketComparatorSection } from './components/SupermarketComparatorSection';
 import {
   COLOMBIAN_MARKETS,
   ColombianMarket,
@@ -127,7 +130,7 @@ export interface PriceWatchDoc {
   updatedAt?: Timestamp;
 }
 
-type ActiveTab = 'inventory' | 'shopping' | 'sipsa' | 'alerts';
+type ActiveTab = 'inventory' | 'shopping' | 'comparador' | 'sipsa' | 'alerts';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -385,6 +388,55 @@ export default function App() {
     }
 
     showToast(`"${cleanName}" guardado correctamente.`);
+  };
+
+  // Add or update an offer from VTEX Supermarket Comparator into Shopping List
+  const handleAddVtexOfferToShoppingList = async (offer: {
+    name: string;
+    brand: string;
+    barcode: string;
+    category: ProductCategory;
+    priceCop: number;
+    storeName: string;
+    imageUrl: string;
+  }) => {
+    if (!user) return;
+    const sipsaMatch = findMatchingSipsaProduct(offer.name, selectedMarket);
+    const shopRef = doc(collection(db, 'shopping_list'));
+
+    try {
+      await setDoc(shopRef, {
+        uid: user.uid,
+        name: sanitizeString(offer.name, 120, 'Producto'),
+        brand: sanitizeString(offer.brand, 100, offer.storeName),
+        barcode: sanitizeString(offer.barcode, 64, ''),
+        category: offer.category,
+        quantityToBuy: 1,
+        unit: 'unid',
+        estimatedPriceCop: sanitizeNumber(offer.priceCop, 0, 100000000),
+        sipsaPriceCop: sanitizeNumber(
+          sipsaMatch ? sipsaMatch.wholesalePricePerKgCop : 0,
+          0,
+          100000000
+        ),
+        checked: false,
+        inventoryItemId: '',
+        imageUrl: sanitizeString(offer.imageUrl, 500, ''),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      showToast(
+        `"${offer.name}" añadido a tu Lista de Compras con el precio de ${offer.storeName} (${formatCop(
+          offer.priceCop
+        )}).`
+      );
+    } catch (error) {
+      handleFirestoreError(
+        error,
+        OperationType.CREATE,
+        `shopping_list/${shopRef.id}`
+      );
+    }
   };
 
   // Action 1 on /inventory: update quantity & updatedAt
@@ -714,7 +766,7 @@ export default function App() {
     }
   };
 
-  // Seed Sample Colombian Household Basket
+  // Seed Sample Colombian Household Basket (with real verified VTEX + OpenFoodFacts EANs)
   const handleSeedColombianPantry = async () => {
     if (!user) return;
     const sampleItems: Array<{
@@ -731,43 +783,56 @@ export default function App() {
       nutriscore: string;
     }> = [
       {
-        name: 'Arroz Diana Blanco (1kg)',
+        name: 'Arroz Diana Blanco 500g',
         brand: 'Diana',
-        barcode: '7702025101119',
+        barcode: '7702511000014',
         category: 'Granos y cereales',
         quantity: 1,
         minQuantity: 2,
-        unit: 'kg',
-        estimatedPriceCop: 4600,
+        unit: 'unid',
+        estimatedPriceCop: 2100,
         sipsaRefName: 'Arroz blanco de primera',
         location: 'Alacena',
         nutriscore: 'B',
       },
       {
-        name: 'Leche Entera Alquería (1.1L)',
-        brand: 'Alquería',
-        barcode: '7702001053902',
-        category: 'Lácteos y huevos',
+        name: 'Chocolate Corona Tradicional 450g',
+        brand: 'Corona',
+        barcode: '7702007084535',
+        category: 'Procesados',
         quantity: 1,
-        minQuantity: 2,
-        unit: 'L',
-        estimatedPriceCop: 5600,
-        sipsaRefName: 'Leche entera larga vida',
-        location: 'Nevera',
-        nutriscore: 'B',
+        minQuantity: 1,
+        unit: 'unid',
+        estimatedPriceCop: 16250,
+        sipsaRefName: 'Chocolate de mesa',
+        location: 'Alacena',
+        nutriscore: 'C',
       },
       {
-        name: 'Café Sello Rojo Tradicional (500g)',
+        name: 'Café Sello Rojo Tradicional 425g',
         brand: 'Sello Rojo',
-        barcode: '7702129001106',
+        barcode: '7702032117833',
         category: 'Procesados',
         quantity: 0,
         minQuantity: 1,
         unit: 'paq',
-        estimatedPriceCop: 18500,
+        estimatedPriceCop: 20900,
         sipsaRefName: 'Café molido tradicional',
         location: 'Alacena',
         nutriscore: 'A',
+      },
+      {
+        name: 'Galletas Ducales 2 Tacos 204g',
+        brand: 'Noel',
+        barcode: '7702025139897',
+        category: 'Procesados',
+        quantity: 1,
+        minQuantity: 1,
+        unit: 'paq',
+        estimatedPriceCop: 5950,
+        sipsaRefName: '',
+        location: 'Alacena',
+        nutriscore: 'D',
       },
       {
         name: 'Aguacate Hass Fresco',
@@ -793,19 +858,6 @@ export default function App() {
         estimatedPriceCop: 4450,
         sipsaRefName: 'Tomate chonto',
         location: 'Nevera',
-        nutriscore: 'A',
-      },
-      {
-        name: 'Papa Pastusa Limpia',
-        brand: 'Plaza Local',
-        barcode: '',
-        category: 'Tubérculos, raíces y plátanos',
-        quantity: 4,
-        minQuantity: 2,
-        unit: 'kg',
-        estimatedPriceCop: 2850,
-        sipsaRefName: 'Papa pastusa',
-        location: 'Alacena',
         nutriscore: 'A',
       },
     ];
@@ -906,7 +958,7 @@ export default function App() {
           MercApp Casa
         </a>
 
-        {/* Zone 2: 4 clean single-line text navigation links */}
+        {/* Zone 2: 5 clean single-line text navigation links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
           <button
             type="button"
@@ -928,7 +980,18 @@ export default function App() {
                 : 'hover:text-slate-900'
             }`}
           >
-            Lista de Compras ({shoppingList.length})
+            Compras ({shoppingList.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('comparador')}
+            className={`py-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'comparador'
+                ? 'text-slate-900 font-semibold underline decoration-emerald-600 decoration-2 underline-offset-8'
+                : 'hover:text-slate-900'
+            }`}
+          >
+            Comparador VTEX
           </button>
           <button
             type="button"
@@ -939,7 +1002,7 @@ export default function App() {
                 : 'hover:text-slate-900'
             }`}
           >
-            Precios SIPSA DANE
+            Precios SIPSA
           </button>
           <button
             type="button"
@@ -997,10 +1060,10 @@ export default function App() {
         <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div className="space-y-1">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 text-balance">
-              Control de Mercado, Alacena y Precios SIPSA
+              Mercado, Inventario, Comparador VTEX y Precios SIPSA
             </h1>
             <p className="text-sm text-slate-600">
-              Escanea códigos de barras con OpenFoodFacts · Recibe alertas de agotamiento · Compara precios mayoristas DANE
+              Compara Éxito, Carulla, Jumbo y Olímpica · Escanea con OpenFoodFacts & Open Prices · Monitorea SIPSA (DANE)
             </p>
           </div>
 
@@ -1131,7 +1194,7 @@ export default function App() {
               Sincroniza el mercado de tu hogar en todos tus dispositivos
             </h2>
             <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
-              Inicia sesión con tu cuenta de Google para guardar tu inventario de alacena y nevera, crear listas de compras colaborativas, escanear productos con OpenFoodFacts y consultar los precios mayoristas de SIPSA (DANE).
+              Inicia sesión con tu cuenta de Google para guardar tu inventario de alacena y nevera, crear listas de compras, comparar precios en Éxito, Carulla, Jumbo y Olímpica (API VTEX) y consultar Open Prices + SIPSA (DANE).
             </p>
             <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
               <button
@@ -1144,10 +1207,10 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('sipsa')}
+                onClick={() => setActiveTab('comparador')}
                 className="min-h-[44px] px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-sm font-semibold text-slate-700 transition-colors cursor-pointer"
               >
-                Explorar Precios SIPSA (DANE)
+                Probar Comparador de Supermercados (VTEX)
               </button>
             </div>
           </section>
@@ -1421,6 +1484,16 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5">
+                {shoppingList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('comparador')}
+                    className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                  >
+                    <Store className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Comparar Lista en Supermercados VTEX</span>
+                  </button>
+                )}
                 {shoppingSummary.checkedCount > 0 && (
                   <button
                     type="button"
@@ -1455,7 +1528,7 @@ export default function App() {
                     Tu lista de compras está vacía
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Añade productos escaneando su código de barras, desde las alertas de bajo stock o directamente desde el boletín de precios mayoristas SIPSA (DANE).
+                    Añade productos escaneando su código de barras, desde el Comparador de Supermercados VTEX o directamente desde el boletín de precios mayoristas SIPSA (DANE).
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-3 pt-2">
@@ -1469,6 +1542,14 @@ export default function App() {
                   >
                     <Barcode className="w-4 h-4 text-emerald-400" />
                     <span>Escanear o Buscar Producto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('comparador')}
+                    className="min-h-[44px] px-5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Store className="w-4 h-4 text-emerald-600" />
+                    <span>Ir al Comparador VTEX</span>
                   </button>
                   {lowStockItems.length > 0 && (
                     <button
@@ -1588,8 +1669,19 @@ export default function App() {
           </section>
         )}
 
-        {/* TAB 3: PRECIOS MAYORISTAS SIPSA (DANE) */}
-        {(activeTab === 'sipsa' || !user) && (
+        {/* TAB 3: COMPARADOR DE SUPERMERCADOS VTEX & OPEN PRICES */}
+        {(activeTab === 'comparador' || !user) && (
+          <SupermarketComparatorSection
+            selectedMarket={selectedMarket}
+            shoppingList={shoppingList}
+            inventory={inventory}
+            isAuthenticated={!!user}
+            onAddOfferToShoppingList={handleAddVtexOfferToShoppingList}
+          />
+        )}
+
+        {/* TAB 4: PRECIOS MAYORISTAS SIPSA (DANE) */}
+        {activeTab === 'sipsa' && (
           <section className="space-y-6">
             <div className="rounded-2xl bg-white border border-slate-200 p-6 space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1762,7 +1854,7 @@ export default function App() {
           </section>
         )}
 
-        {/* TAB 4: ALERTAS Y SEGUIMIENTO DE PRECIOS */}
+        {/* TAB 5: ALERTAS Y SEGUIMIENTO DE PRECIOS */}
         {activeTab === 'alerts' && user && (
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             {/* Column 1: Low-Stock & Out-of-Stock Alerts */}
@@ -1954,7 +2046,7 @@ export default function App() {
 
       {/* MOBILE BOTTOM NAVIGATION BAR (Ergonomic Thumb Zone <= 15% Sticky Cap) */}
       {user && (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 grid grid-cols-4 items-center h-16 px-2">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 grid grid-cols-5 items-center h-16 px-1">
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
@@ -1983,6 +2075,19 @@ export default function App() {
 
           <button
             type="button"
+            onClick={() => setActiveTab('comparador')}
+            className={`min-h-[44px] flex flex-col items-center justify-center cursor-pointer ${
+              activeTab === 'comparador' ? 'text-emerald-600' : 'text-slate-500'
+            }`}
+          >
+            <Store className="w-5 h-5" />
+            <span className="text-[10px] font-semibold tracking-tight mt-0.5">
+              VTEX
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('sipsa')}
             className={`min-h-[44px] flex flex-col items-center justify-center cursor-pointer ${
               activeTab === 'sipsa' ? 'text-emerald-600' : 'text-slate-500'
@@ -1990,7 +2095,7 @@ export default function App() {
           >
             <TrendingDown className="w-5 h-5" />
             <span className="text-[10px] font-semibold tracking-tight mt-0.5">
-              SIPSA DANE
+              SIPSA
             </span>
           </button>
 

@@ -21,49 +21,49 @@ export interface SampleBarcodePreset {
   estimatedPriceCop: number;
 }
 
-// Authentic Colombian barcodes available on OpenFoodFacts for 1-tap testing or physical scanning
+// Authentic Colombian barcodes verified across OpenFoodFacts and Colombian VTEX supermarkets (Éxito, Carulla, Jumbo, Olímpica)
 export const COLOMBIAN_BARCODE_PRESETS: SampleBarcodePreset[] = [
   {
-    barcode: '7702004003508',
-    label: 'Chocolate Corona Tradicional 500g',
-    brand: 'Corona',
-    category: 'Procesados',
-    estimatedPriceCop: 14900,
-  },
-  {
-    barcode: '7702001053902',
-    label: 'Leche Entera Alquería 1.1L',
-    brand: 'Alquería',
-    category: 'Lácteos y huevos',
-    estimatedPriceCop: 5800,
-  },
-  {
-    barcode: '7702129001106',
-    label: 'Café Sello Rojo Tradicional 500g',
-    brand: 'Sello Rojo',
-    category: 'Procesados',
-    estimatedPriceCop: 18500,
-  },
-  {
-    barcode: '7702025101119',
-    label: 'Arroz Diana Blanco 1kg',
+    barcode: '7702511000014',
+    label: 'Arroz Diana Blanco 500g',
     brand: 'Diana',
     category: 'Granos y cereales',
-    estimatedPriceCop: 4600,
+    estimatedPriceCop: 2100,
   },
   {
-    barcode: '7702004000118',
-    label: 'Galletas Ducales Taco 294g',
+    barcode: '7702007084535',
+    label: 'Chocolate Corona Tradicional 450g',
+    brand: 'Corona',
+    category: 'Procesados',
+    estimatedPriceCop: 16250,
+  },
+  {
+    barcode: '7702032117833',
+    label: 'Café Sello Rojo Tradicional 425g',
+    brand: 'Sello Rojo',
+    category: 'Procesados',
+    estimatedPriceCop: 21200,
+  },
+  {
+    barcode: '7702025139897',
+    label: 'Galletas Ducales 2 Tacos 204g',
     brand: 'Noel',
     category: 'Procesados',
-    estimatedPriceCop: 8200,
+    estimatedPriceCop: 5950,
   },
   {
-    barcode: '7702011011019',
-    label: 'Spaghetti Doria 500g',
+    barcode: '7702511003695',
+    label: 'Arroz Diana Integral 1000g',
+    brand: 'Diana',
+    category: 'Granos y cereales',
+    estimatedPriceCop: 7370,
+  },
+  {
+    barcode: '7702085012482',
+    label: 'Pasta Doria Tornillo 250g',
     brand: 'Doria',
     category: 'Granos y cereales',
-    estimatedPriceCop: 4200,
+    estimatedPriceCop: 2250,
   },
 ];
 

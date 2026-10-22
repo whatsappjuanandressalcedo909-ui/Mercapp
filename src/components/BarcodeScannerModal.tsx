@@ -1,14 +1,18 @@
+import '../preamble';
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
+  AlertCircle,
   Barcode,
   Camera,
   CameraOff,
   Check,
+  ImageUp,
   Loader2,
   PackagePlus,
   Search,
   ShoppingCart,
+  Store,
   X,
 } from 'lucide-react';
 import {
@@ -30,6 +34,10 @@ import {
   findMatchingSipsaProduct,
   formatCop,
 } from '../services/sipsaDaneService';
+import {
+  compareSupermarketPrices,
+  VtexStoreOffer,
+} from '../services/supermarketPricingService';
 
 export interface ScannedProductSubmission {
   target: 'inventory' | 'shopping' | 'both';
@@ -66,6 +74,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 }) => {
   const [mode, setMode] = useState<'camera' | 'manual' | 'search'>('camera');
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,8 +82,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
 
+  // Live VTEX Supermarket offers fetched automatically when a product/EAN is scanned
+  const [vtexOffers, setVtexOffers] = useState<VtexStoreOffer[]>([]);
+  const [vtexLoading, setVtexLoading] = useState(false);
+
   // Editable form state after scanning or selecting a product
-  const [target, setTarget] = useState<'inventory' | 'shopping' | 'both'>(initialTarget);
+  const [target, setTarget] = useState<'inventory' | 'shopping' | 'both'>(
+    initialTarget
+  );
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [barcode, setBarcode] = useState('');
@@ -92,25 +107,32 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const readerElementId = 'openfoodfacts-barcode-reader';
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const readerElementId = 'openfoodfacts-barcode-reader-dedicated';
 
   useEffect(() => {
     setTarget(initialTarget);
   }, [initialTarget, isOpen]);
 
   const stopScanner = async () => {
-    if (scannerRef.current) {
+    const instance = scannerRef.current;
+    scannerRef.current = null;
+    if (instance) {
       try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
+        if (instance.isScanning) {
+          await instance.stop();
         }
-        scannerRef.current.clear();
       } catch (err) {
-        console.warn('Stop scanner cleanup:', err);
+        console.warn('Stop scanner warning:', err);
       }
-      scannerRef.current = null;
+      try {
+        instance.clear();
+      } catch {
+        // Ignore clear errors on detached DOM
+      }
     }
     setCameraActive(false);
+    setCameraStarting(false);
   };
 
   useEffect(() => {
@@ -122,7 +144,36 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     };
   }, [isOpen, mode]);
 
-  const applyFoundProduct = (product: OpenFoodFactsProduct, fallbackPrice?: number) => {
+  const fetchVtexPricesForScannedItem = async (
+    eanCode: string,
+    prodName: string
+  ) => {
+    setVtexLoading(true);
+    setVtexOffers([]);
+    try {
+      const comp = await compareSupermarketPrices({
+        ean: eanCode,
+        query: prodName,
+      });
+      if (comp.offers && comp.offers.length > 0) {
+        setVtexOffers(comp.offers);
+        setEstimatedPriceCop(comp.offers[0].priceCop);
+        if (!prodName || prodName.startsWith('Producto EAN')) {
+          setName(comp.offers[0].productName);
+          setBrand(comp.offers[0].brand);
+        }
+      }
+    } catch {
+      // Ignore if offline
+    } finally {
+      setVtexLoading(false);
+    }
+  };
+
+  const applyFoundProduct = (
+    product: OpenFoodFactsProduct,
+    fallbackPrice?: number
+  ) => {
     setName(product.name);
     setBrand(product.brand || 'Genérico');
     setBarcode(product.barcode);
@@ -134,9 +185,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setImageUrl(product.imageUrl || '');
     setNutriscore(product.nutriscore || '');
 
-    if (product.category === 'Lácteos y huevos' || product.category === 'Verduras y hortalizas') {
+    if (
+      product.category === 'Lácteos y huevos' ||
+      product.category === 'Verduras y hortalizas'
+    ) {
       setLocation('Nevera');
-    } else if (product.category === 'Carnes' || product.category === 'Pescados') {
+    } else if (
+      product.category === 'Carnes' ||
+      product.category === 'Pescados'
+    ) {
       setLocation('Congelador');
     } else if (product.category === 'Aseo y hogar') {
       setLocation('Aseo');
@@ -148,7 +205,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     if (sipsaMatch) {
       setSipsaRefName(sipsaMatch.productName);
       setSipsaPriceCop(sipsaMatch.wholesalePricePerKgCop);
-      setEstimatedPriceCop(fallbackPrice || sipsaMatch.estimatedRetailPricePerKgCop);
+      setEstimatedPriceCop(
+        fallbackPrice || sipsaMatch.estimatedRetailPricePerKgCop
+      );
     } else {
       setSipsaRefName('');
       setSipsaPriceCop(0);
@@ -156,9 +215,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         setEstimatedPriceCop(fallbackPrice);
       }
     }
+
+    fetchVtexPricesForScannedItem(product.barcode, product.name);
   };
 
-  const handleBarcodeLookup = async (codeToLookup: string, presetPrice?: number) => {
+  const handleBarcodeLookup = async (
+    codeToLookup: string,
+    presetPrice?: number
+  ) => {
     const clean = codeToLookup.replace(/[^0-9]/g, '');
     if (!clean) return;
     setIsLoading(true);
@@ -175,37 +239,99 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       setBarcode(clean);
       setName(`Producto EAN ${clean}`);
       setLookupMessage(
-        `Código ${clean} leído. No figura en OpenFoodFacts; completa el nombre manualmente.`
+        `Código ${clean} leído. Consultando catálogos VTEX en Colombia...`
       );
+      fetchVtexPricesForScannedItem(clean, '');
     }
   };
 
   const startCameraScanner = async () => {
     setCameraError(null);
+    setCameraStarting(true);
+    await stopScanner();
+    setCameraStarting(true);
+
     try {
-      await stopScanner();
+      const el = document.getElementById(readerElementId);
+      if (!el) {
+        throw new Error('Contenedor de cámara no disponible.');
+      }
+
       const html5QrCode = new Html5Qrcode(readerElementId);
       scannerRef.current = html5QrCode;
       setCameraActive(true);
-      await html5QrCode.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 140 },
-        },
-        (decodedText) => {
-          handleBarcodeLookup(decodedText);
-        },
-        () => {
-          // Ignore frame scan misses
+
+      const scanConfig = {
+        fps: 10,
+        qrbox: { width: 240, height: 120 },
+      };
+
+      const onScanSuccess = (decodedText: string) => {
+        handleBarcodeLookup(decodedText);
+      };
+
+      try {
+        // First attempt rear camera (mobile)
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          scanConfig,
+          onScanSuccess,
+          () => {}
+        );
+      } catch {
+        // Fallback to front/laptop webcam or first available camera
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          await html5QrCode.start(
+            cameras[0].id,
+            scanConfig,
+            onScanSuccess,
+            () => {}
+          );
+        } else {
+          await html5QrCode.start(
+            { facingMode: 'user' },
+            scanConfig,
+            onScanSuccess,
+            () => {}
+          );
         }
-      );
+      }
+      setCameraStarting(false);
     } catch (err) {
       console.warn('Camera access error:', err);
-      setCameraActive(false);
+      await stopScanner();
       setCameraError(
-        'No se pudo acceder a la cámara en este navegador o permiso denegado. Usa la entrada manual o los códigos de prueba abajo.'
+        'No se pudo abrir la cámara en directo (puede estar bloqueada por permisos del navegador o vista previa). Puedes subir una foto del código de barras, digitar el EAN manualmente o tocar cualquiera de los productos reales abajo.'
       );
+    }
+  };
+
+  const handleScanImageFile = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCameraError(null);
+    setIsLoading(true);
+    await stopScanner();
+
+    try {
+      const html5QrCode = new Html5Qrcode(readerElementId);
+      const decodedText = await html5QrCode.scanFile(file, false);
+      html5QrCode.clear();
+      setIsLoading(false);
+      await handleBarcodeLookup(decodedText);
+    } catch (err) {
+      console.warn('File scan error:', err);
+      setIsLoading(false);
+      setCameraError(
+        'No se detectó un código de barras nítido en la imagen. Intenta con otra foto o escribe los números del código EAN en "Código Manual".'
+      );
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -218,7 +344,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setSearchResults(results);
     setIsLoading(false);
     if (results.length === 0) {
-      setLookupMessage('Sin resultados en OpenFoodFacts. Puedes ingresar los datos abajo.');
+      setLookupMessage(
+        'Sin resultados en OpenFoodFacts. Puedes ingresar los datos abajo.'
+      );
     }
   };
 
@@ -259,13 +387,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div>
             <h2 className="text-lg font-bold text-slate-900">
-              Escáner OpenFoodFacts y Registro de Producto
+              Escáner OpenFoodFacts + Precios VTEX
             </h2>
             <p className="text-xs text-slate-500">
-              Escanea un código de barras EAN-13 o busca en la base abierta de OpenFoodFacts
+              Escanea con cámara, sube foto del código EAN-13 o busca por nombre
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
             aria-label="Cerrar escáner"
@@ -288,7 +417,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               }`}
             >
               <Camera className="w-4 h-4 shrink-0" />
-              <span>Cámara EAN</span>
+              <span>Cámara / Foto EAN</span>
             </button>
             <button
               type="button"
@@ -316,34 +445,63 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </button>
           </div>
 
-          {/* Mode 1: Camera Scanner */}
+          {/* Mode 1: Camera & Photo Scanner */}
           {mode === 'camera' && (
             <div className="rounded-2xl border border-slate-200 bg-slate-900 p-4 text-white">
+              {/* IMPORTANT: Dedicated empty container for Html5Qrcode so it never conflicts with React child reconciliation */}
               <div
                 id={readerElementId}
-                className="w-full min-h-[200px] rounded-xl overflow-hidden bg-slate-950 flex items-center justify-center"
-              >
-                {!cameraActive && (
-                  <div className="text-center p-6 space-y-3">
+                className={
+                  cameraActive
+                    ? 'w-full min-h-[240px] rounded-xl overflow-hidden bg-black'
+                    : 'hidden'
+                }
+              />
+
+              {/* React-managed placeholder shown ONLY when cameraActive is false (Sibling, NOT child of readerElementId) */}
+              {!cameraActive && (
+                <div className="w-full min-h-[200px] rounded-xl bg-slate-950 flex items-center justify-center p-6">
+                  <div className="text-center space-y-4 max-w-md mx-auto">
                     <Camera className="w-8 h-8 text-emerald-400 mx-auto" />
-                    <p className="text-xs text-slate-300 max-w-xs mx-auto">
-                      Apunta la cámara al código de barras del empaque para consultar OpenFoodFacts automáticamente.
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Usa la cámara en vivo o toma/sube una foto del código de barras del empaque para consultar OpenFoodFacts y comparar en Éxito, Carulla, Jumbo y Olímpica.
                     </p>
-                    <button
-                      type="button"
-                      onClick={startCameraScanner}
-                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors inline-flex items-center gap-2 cursor-pointer"
-                    >
-                      <Camera className="w-4 h-4" />
-                      <span>Activar Cámara para Escanear</span>
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={startCameraScanner}
+                        disabled={cameraStarting}
+                        className="min-h-[44px] px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors inline-flex items-center gap-2 cursor-pointer"
+                      >
+                        {cameraStarting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                        <span>Activar Cámara en Vivo</span>
+                      </button>
+
+                      <label className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-100 transition-colors inline-flex items-center gap-2 cursor-pointer">
+                        <ImageUp className="w-4 h-4 text-emerald-400" />
+                        <span>Subir / Tomar Foto del Código</span>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleScanImageFile}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
               {cameraActive && (
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-xs text-slate-300">
-                    Escaneando código de barras EAN-13 / UPC...
+                    Apunta el código de barras dentro del recuadro...
                   </span>
                   <button
                     type="button"
@@ -351,14 +509,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                     className="min-h-[36px] px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <CameraOff className="w-3.5 h-3.5" />
-                    <span>Detener</span>
+                    <span>Detener Cámara</span>
                   </button>
                 </div>
               )}
+
               {cameraError && (
-                <p className="mt-3 text-xs text-amber-300 bg-amber-950/50 border border-amber-800/50 rounded-lg p-3">
-                  {cameraError}
-                </p>
+                <div className="mt-3 flex items-start gap-2.5 text-xs text-amber-200 bg-amber-950/60 border border-amber-800/60 rounded-xl p-3.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-2">
+                    <p>{cameraError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setMode('manual')}
+                      className="text-xs font-semibold text-emerald-400 hover:underline cursor-pointer"
+                    >
+                      Cambiar a entrada de Código Manual →
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -371,7 +540,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   type="text"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
-                  placeholder="Ej. 7702004003508 (Código EAN-13)"
+                  placeholder="Escribe el código EAN-13 (ej. 7702511000014)"
                   className="flex-1 min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
                 <button
@@ -380,7 +549,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   disabled={isLoading || !manualCode.trim()}
                   className="min-h-[44px] px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white transition-colors flex items-center gap-2 whitespace-nowrap cursor-pointer"
                 >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
                   <span>Consultar EAN</span>
                 </button>
               </div>
@@ -403,7 +576,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   disabled={isLoading || !searchQuery.trim()}
                   className="min-h-[44px] px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white transition-colors flex items-center gap-2 whitespace-nowrap cursor-pointer"
                 >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
                   <span>Buscar</span>
                 </button>
               </form>
@@ -418,9 +595,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/60 transition-colors flex items-center justify-between gap-3 cursor-pointer"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
+                        <p className="text-sm font-semibold text-slate-900 truncate">
+                          {item.name}
+                        </p>
                         <p className="text-xs text-slate-500 truncate">
-                          {item.brand} · {item.category} {item.barcode ? `· EAN ${item.barcode}` : ''}
+                          {item.brand} · {item.category}{' '}
+                          {item.barcode ? `· EAN ${item.barcode}` : ''}
                         </p>
                       </div>
                       <span className="text-xs font-semibold text-emerald-700 shrink-0">
@@ -436,19 +616,28 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           {/* Quick-Test Colombian Barcodes Bar */}
           <div className="space-y-2">
             <p className="text-xs font-medium text-slate-500">
-              Prueba rápida con códigos EAN-13 reales de productos en Colombia (OpenFoodFacts):
+              O toca un código EAN-13 colombiano para probar al instante (OpenFoodFacts + VTEX):
             </p>
             <div className="flex flex-wrap gap-2">
               {COLOMBIAN_BARCODE_PRESETS.map((preset) => (
                 <button
                   key={preset.barcode}
                   type="button"
-                  onClick={() => handleBarcodeLookup(preset.barcode, preset.estimatedPriceCop)}
+                  onClick={() =>
+                    handleBarcodeLookup(
+                      preset.barcode,
+                      preset.estimatedPriceCop
+                    )
+                  }
                   className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-xs text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span className="font-mono text-[11px] text-slate-500">{preset.barcode}</span>
+                  <span className="font-mono text-[11px] text-slate-500">
+                    {preset.barcode}
+                  </span>
                   <span aria-hidden="true">·</span>
-                  <span className="font-medium text-slate-900">{preset.label}</span>
+                  <span className="font-medium text-slate-900">
+                    {preset.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -465,8 +654,55 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
 
+          {/* Live VTEX Supermarket Offers Strip */}
+          {(vtexLoading || vtexOffers.length > 0) && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>
+                    Precios en tiempo real en Supermercados VTEX (toca para aplicar):
+                  </span>
+                </span>
+                {vtexLoading && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                )}
+              </div>
+              {vtexOffers.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {vtexOffers.map((offer) => (
+                    <button
+                      key={`${offer.storeId}_${offer.ean}`}
+                      type="button"
+                      onClick={() => {
+                        setEstimatedPriceCop(offer.priceCop);
+                        setBrand(
+                          `${offer.brand} (${offer.storeName})`.slice(0, 100)
+                        );
+                        if (offer.imageUrl) setImageUrl(offer.imageUrl);
+                      }}
+                      className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs transition-colors flex items-center gap-1.5 cursor-pointer ${
+                        estimatedPriceCop === offer.priceCop
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-semibold'
+                          : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span>{offer.storeName}:</span>
+                      <span className="font-mono tabular-nums font-bold">
+                        {formatCop(offer.priceCop)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Product Details & Destination Form */}
-          <form onSubmit={handleFormSubmit} className="space-y-4 pt-2 border-t border-slate-200">
+          <form
+            onSubmit={handleFormSubmit}
+            className="space-y-4 pt-2 border-t border-slate-200"
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-xs font-semibold text-slate-700">
                 ¿Dónde deseas añadir este producto?
@@ -530,21 +766,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       setSipsaPriceCop(match.wholesalePricePerKgCop);
                     }
                   }}
-                  placeholder="Ej. Arroz Blanco Diana 1kg"
+                  placeholder="Ej. Arroz Blanco Diana 500g"
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Marca / Fabricante
+                  Marca / Supermercado
                 </label>
                 <input
                   type="text"
                   maxLength={100}
                   value={brand}
                   onChange={(e) => setBrand(e.target.value)}
-                  placeholder="Ej. Diana, Alquería, Plaza Local"
+                  placeholder="Ej. Diana (Olímpica)"
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
               </div>
@@ -555,7 +791,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 </label>
                 <select
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as ProductCategory)}
+                  onChange={(e) =>
+                    setCategory(e.target.value as ProductCategory)
+                  }
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 >
                   {VALID_CATEGORIES.map((cat) => (
@@ -572,7 +810,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 </label>
                 <select
                   value={location}
-                  onChange={(e) => setLocation(e.target.value as StorageLocation)}
+                  onChange={(e) =>
+                    setLocation(e.target.value as StorageLocation)
+                  }
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 >
                   {VALID_LOCATIONS.map((loc) => (
@@ -649,14 +889,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Precio Estimado Unitario (COP $)
+                  Precio Unitario (COP $)
                 </label>
                 <input
                   type="number"
                   min={0}
-                  step="100"
+                  step="50"
                   value={estimatedPriceCop}
-                  onChange={(e) => setEstimatedPriceCop(Number(e.target.value))}
+                  onChange={(e) =>
+                    setEstimatedPriceCop(Number(e.target.value))
+                  }
                   className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
                 {sipsaRefName && sipsaPriceCop > 0 && (
