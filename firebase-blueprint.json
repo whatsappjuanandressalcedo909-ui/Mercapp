@@ -1,0 +1,289 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Household pantry, fridge, or cleaning product tracked with current stock and low-stock alert threshold.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated owner UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "brand": {
+          "type": "string",
+          "description": "Product brand from OpenFoodFacts or manual entry",
+          "maxLength": 100
+        },
+        "barcode": {
+          "type": "string",
+          "description": "EAN/UPC barcode string",
+          "maxLength": 64
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category aligned with DANE SIPSA food groups and household items",
+          "enum": [
+            "Verduras y hortalizas",
+            "Frutas",
+            "Tubérculos, raíces y plátanos",
+            "Granos y cereales",
+            "Lácteos y huevos",
+            "Carnes",
+            "Pescados",
+            "Procesados",
+            "Aseo y hogar",
+            "Bebidas y otros"
+          ],
+          "maxLength": 60
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Current available quantity in household"
+        },
+        "minQuantity": {
+          "type": "number",
+          "description": "Threshold quantity at or below which low-stock alert triggers"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement",
+          "enum": ["unid", "kg", "g", "L", "ml", "lb", "paq"],
+          "maxLength": 16
+        },
+        "estimatedPriceCop": {
+          "type": "number",
+          "description": "Estimated unit price in Colombian Pesos (COP)"
+        },
+        "sipsaRefName": {
+          "type": "string",
+          "description": "Linked DANE SIPSA product name for local price comparison",
+          "maxLength": 120
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Product thumbnail URL from OpenFoodFacts",
+          "maxLength": 500
+        },
+        "nutriscore": {
+          "type": "string",
+          "description": "Nutri-Score grade (A-E) if available from OpenFoodFacts",
+          "maxLength": 10
+        },
+        "location": {
+          "type": "string",
+          "description": "Storage zone inside the house",
+          "enum": ["Alacena", "Nevera", "Congelador", "Aseo"],
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "brand",
+        "barcode",
+        "category",
+        "quantity",
+        "minQuantity",
+        "unit",
+        "estimatedPriceCop",
+        "sipsaRefName",
+        "imageUrl",
+        "nutriscore",
+        "location",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ShoppingItem": {
+      "title": "ShoppingItem",
+      "description": "Item in the active household shopping list with quantity to buy, COP price estimate, and SIPSA benchmark.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated owner UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "brand": {
+          "type": "string",
+          "description": "Brand name",
+          "maxLength": 100
+        },
+        "barcode": {
+          "type": "string",
+          "description": "EAN/UPC barcode",
+          "maxLength": 64
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category",
+          "enum": [
+            "Verduras y hortalizas",
+            "Frutas",
+            "Tubérculos, raíces y plátanos",
+            "Granos y cereales",
+            "Lácteos y huevos",
+            "Carnes",
+            "Pescados",
+            "Procesados",
+            "Aseo y hogar",
+            "Bebidas y otros"
+          ],
+          "maxLength": 60
+        },
+        "quantityToBuy": {
+          "type": "number",
+          "description": "Quantity to purchase"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement",
+          "enum": ["unid", "kg", "g", "L", "ml", "lb", "paq"],
+          "maxLength": 16
+        },
+        "estimatedPriceCop": {
+          "type": "number",
+          "description": "Expected unit price in COP"
+        },
+        "sipsaPriceCop": {
+          "type": "number",
+          "description": "Reference DANE SIPSA wholesale price per kg/unit in COP"
+        },
+        "checked": {
+          "type": "boolean",
+          "description": "Whether the item has been placed in the cart"
+        },
+        "inventoryItemId": {
+          "type": "string",
+          "description": "Optional ID of linked InventoryItem for 1-click restocking",
+          "maxLength": 128
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Product image URL",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "brand",
+        "barcode",
+        "category",
+        "quantityToBuy",
+        "unit",
+        "estimatedPriceCop",
+        "sipsaPriceCop",
+        "checked",
+        "inventoryItemId",
+        "imageUrl",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PriceWatch": {
+      "title": "PriceWatch",
+      "description": "Tracked DANE SIPSA local wholesale market item for household budget alerts.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated owner UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sipsaProduct": {
+          "type": "string",
+          "description": "Official SIPSA food name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "marketCity": {
+          "type": "string",
+          "description": "Wholesale market and city name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "targetPriceCop": {
+          "type": "number",
+          "description": "User target price in COP/kg"
+        },
+        "lastRecordedPriceCop": {
+          "type": "number",
+          "description": "Latest SIPSA price in COP/kg"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "sipsaProduct",
+        "marketCity",
+        "targetPriceCop",
+        "lastRecordedPriceCop",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/inventory/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "User household inventory items with stock levels and alert thresholds."
+    },
+    "/shopping_list/{shopId}": {
+      "schema": { "$ref": "#/entities/ShoppingItem" },
+      "description": "User active shopping list items."
+    },
+    "/price_watches/{watchId}": {
+      "schema": { "$ref": "#/entities/PriceWatch" },
+      "description": "User pinned SIPSA local market price trackers."
+    }
+  }
+}

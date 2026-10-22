@@ -1,0 +1,6 @@
+{
+  "name": "MercApp Casa — Mercado, Inventario y Precios SIPSA",
+  "description": "PWA inteligente para gestionar la lista de compras del hogar, inventario de alacena con alertas de agotamiento, escáner de códigos de barras con OpenFoodFacts y seguimiento de precios mayoristas locales con SIPSA (DANE).",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

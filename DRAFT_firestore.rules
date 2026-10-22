@@ -1,0 +1,196 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function isValidCategory(cat) {
+      return cat is string && cat.size() <= 60 && cat in [
+        'Verduras y hortalizas',
+        'Frutas',
+        'Tubérculos, raíces y plátanos',
+        'Granos y cereales',
+        'Lácteos y huevos',
+        'Carnes',
+        'Pescados',
+        'Procesados',
+        'Aseo y hogar',
+        'Bebidas y otros'
+      ];
+    }
+    function isValidUnit(u) {
+      return u is string && u.size() <= 16 && u in ['unid', 'kg', 'g', 'L', 'ml', 'lb', 'paq'];
+    }
+    function isValidLocation(loc) {
+      return loc is string && loc.size() <= 32 && loc in ['Alacena', 'Nevera', 'Congelador', 'Aseo'];
+    }
+
+    // Validation Blueprint: InventoryItem
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll([
+        'uid', 'name', 'brand', 'barcode', 'category',
+        'quantity', 'minQuantity', 'unit', 'estimatedPriceCop',
+        'sipsaRefName', 'imageUrl', 'nutriscore', 'location',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'name', 'brand', 'barcode', 'category',
+        'quantity', 'minQuantity', 'unit', 'estimatedPriceCop',
+        'sipsaRefName', 'imageUrl', 'nutriscore', 'location',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+      data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid == request.auth.uid &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+      data.brand is string && data.brand.size() <= 100 &&
+      data.barcode is string && data.barcode.size() <= 64 &&
+      isValidCategory(data.category) &&
+      data.quantity is number && data.quantity >= 0 && data.quantity <= 1000000 &&
+      data.minQuantity is number && data.minQuantity >= 0 && data.minQuantity <= 1000000 &&
+      isValidUnit(data.unit) &&
+      data.estimatedPriceCop is number && data.estimatedPriceCop >= 0 && data.estimatedPriceCop <= 100000000 &&
+      data.sipsaRefName is string && data.sipsaRefName.size() <= 120 &&
+      data.imageUrl is string && data.imageUrl.size() <= 500 &&
+      data.nutriscore is string && data.nutriscore.size() <= 10 &&
+      isValidLocation(data.location) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: ShoppingItem
+    function isValidShoppingItem(data) {
+      return data.keys().hasAll([
+        'uid', 'name', 'brand', 'barcode', 'category',
+        'quantityToBuy', 'unit', 'estimatedPriceCop', 'sipsaPriceCop',
+        'checked', 'inventoryItemId', 'imageUrl', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'name', 'brand', 'barcode', 'category',
+        'quantityToBuy', 'unit', 'estimatedPriceCop', 'sipsaPriceCop',
+        'checked', 'inventoryItemId', 'imageUrl', 'createdAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+      data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid == request.auth.uid &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+      data.brand is string && data.brand.size() <= 100 &&
+      data.barcode is string && data.barcode.size() <= 64 &&
+      isValidCategory(data.category) &&
+      data.quantityToBuy is number && data.quantityToBuy > 0 && data.quantityToBuy <= 1000000 &&
+      isValidUnit(data.unit) &&
+      data.estimatedPriceCop is number && data.estimatedPriceCop >= 0 && data.estimatedPriceCop <= 100000000 &&
+      data.sipsaPriceCop is number && data.sipsaPriceCop >= 0 && data.sipsaPriceCop <= 100000000 &&
+      data.checked is bool &&
+      data.inventoryItemId is string && data.inventoryItemId.size() <= 128 &&
+      data.imageUrl is string && data.imageUrl.size() <= 500 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: PriceWatch
+    function isValidPriceWatch(data) {
+      return data.keys().hasAll([
+        'uid', 'sipsaProduct', 'marketCity',
+        'targetPriceCop', 'lastRecordedPriceCop',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'sipsaProduct', 'marketCity',
+        'targetPriceCop', 'lastRecordedPriceCop',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+      data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid == request.auth.uid &&
+      data.sipsaProduct is string && data.sipsaProduct.size() >= 1 && data.sipsaProduct.size() <= 120 &&
+      data.marketCity is string && data.marketCity.size() >= 1 && data.marketCity.size() <= 120 &&
+      data.targetPriceCop is number && data.targetPriceCop >= 0 && data.targetPriceCop <= 100000000 &&
+      data.lastRecordedPriceCop is number && data.lastRecordedPriceCop >= 0 && data.lastRecordedPriceCop <= 100000000 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Collection: /inventory/{itemId}
+    match /inventory/{itemId} {
+      allow get: if isSignedIn() && isValidId(itemId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && existing().uid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(itemId) && isValidInventoryItem(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(itemId) && isValidInventoryItem(incoming()) &&
+        existing().uid == request.auth.uid &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Stock adjustment
+          incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'updatedAt']) ||
+          // Action 2: Full item details update
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'brand', 'barcode', 'category', 'quantity', 'minQuantity',
+            'unit', 'estimatedPriceCop', 'sipsaRefName', 'imageUrl', 'nutriscore',
+            'location', 'updatedAt'
+          ])
+        );
+      allow delete: if isSignedIn() && isValidId(itemId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection: /shopping_list/{shopId}
+    match /shopping_list/{shopId} {
+      allow get: if isSignedIn() && isValidId(shopId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && existing().uid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(shopId) && isValidShoppingItem(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(shopId) && isValidShoppingItem(incoming()) &&
+        existing().uid == request.auth.uid &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Toggle checked status
+          incoming().diff(existing()).affectedKeys().hasOnly(['checked', 'updatedAt']) ||
+          // Action 2: Adjust quantity or price
+          incoming().diff(existing()).affectedKeys().hasOnly(['quantityToBuy', 'estimatedPriceCop', 'sipsaPriceCop', 'checked', 'updatedAt']) ||
+          // Action 3: Edit item details
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'brand', 'barcode', 'category', 'quantityToBuy',
+            'unit', 'estimatedPriceCop', 'sipsaPriceCop', 'checked',
+            'inventoryItemId', 'imageUrl', 'updatedAt'
+          ])
+        );
+      allow delete: if isSignedIn() && isValidId(shopId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection: /price_watches/{watchId}
+    match /price_watches/{watchId} {
+      allow get: if isSignedIn() && isValidId(watchId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && existing().uid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(watchId) && isValidPriceWatch(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(watchId) && isValidPriceWatch(incoming()) &&
+        existing().uid == request.auth.uid &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['targetPriceCop', 'lastRecordedPriceCop', 'marketCity', 'updatedAt'])
+        );
+      allow delete: if isSignedIn() && isValidId(watchId) && existing().uid == request.auth.uid;
+    }
+  }
+}
